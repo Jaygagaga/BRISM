@@ -1,5 +1,5 @@
 # BRISM
-## This Project is balabala
+## This Project is ...
 ## Research questions:
 ## This project contains 3 social media analyses in three folders.
 
