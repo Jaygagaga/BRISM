@@ -1,7 +1,7 @@
 import zipfile
 import io
 import pandas as pd
-mport ast
+import ast
 import numpy as np
 ast.literal_eval("{'muffin' : 'lolz', 'foo' : 'kitty'}")
 import nltk
