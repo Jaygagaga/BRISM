@@ -23,14 +23,13 @@ from nltk.stem import WordNetLemmatizer
 lemmatizer = WordNetLemmatizer()
 puncs = "!$%&'()*+, -./:;<=>?@[\]^_`{|}~"
 class Processing(object):
-  def __init__(self, merged_data_path= None, tweets_path = None, user_path = None):
+  def __init__(self, merged_data_path= None, tweets_path = None, user_path = None,puncs = None):
     if merged_data_path:
-      data = pd.read_csv(merged_data_path,compression='zip')
+      self.data = pd.read_csv(merged_data_path,compression='zip')
     if tweets_path and user_path:
-      tweets = self.read_zip(tweets_path,'all_tweets.csv','id')
-      users = self.read_zip(user_path,'all_users.csv', 'author_id')
-
-
+      self.tweets = self.read_zip(tweets_path,'all_tweets.csv','id')
+      self.users = self.read_zip(user_path,'all_users.csv', 'author_id')
+    self.puncs = puncs
 
   def _tweet_type(self, df):
     df.loc[df.referenced_tweets.str.contains('retweeted') == True, 'Status'] = 'retweeted'
@@ -49,85 +48,53 @@ class Processing(object):
     with zipfile.ZipFile(file_path) as zip_archive:
       with zip_archive.open('{}.csv'.format(file_name)) as f:
         data = pd.read_csv(io.StringIO(f.read().decode()), lineterminator='\n')
-        data = data.where(pd.notnull(twitter), None)
+        data = data.where(pd.notnull(data), None)
         data = data.drop_duplicates(subset = duplicate_col)
     return data
-  def extact_mentions(self, df,col, puncs,symbol):
+  def _extact_mentions(self, df,col, puncs,symbol):
     mentions_list = []
     for words in df[col]:
-      mentions = [w for w in words.split() if w[0] == symbol and w[-1] not in puncs]
+      mentions = [w for w in words.split() if w[0] == symbol]
+      mentions = [m if m[-1] not in puncs else m[:-1] for m in mentions]
       if len(mentions) != 0:
         mentions_list.append(mentions)
       else:
         mentions_list.append(None)
     return mentions_list
-  def add_mentions(self,df, mentions_list, col_name):
+  def add_mentions(self,df,col, puncs,symbol, col_name):
+    mentions_list = self._extact_mentions(df,col,puncs,symbol)
     assert len(mentions_list) == len(df), "Length of mentions_list is not the same with that of original dataset."
     df[col_name] = mentions_list
     return df
 
 
-
-
-    hashtags = []
-    mentions = []
-    # splitting the text into words
-    for words in df[col]:
-      for word in words:
-        hashtag_list = []
-        mentions_list = []
-        # checking the first character of every word
-        if word[0] == '#':
-          # adding the word to the hashtag_list
-          if word[-1] == '.':
-            hashtag_list.append(word[1:-1])
-          else:
-            hashtag_list.append(word[1:])
-        if word[0] == '@':
-          if word[-1] == '.':
-            mentions_list.append(word[1:-1])
-          else:
-            mentions_list.append(word[1:])
-      if len(hashtag_list) ==0:
-        hashtags.append(None)
-      else:
-        hashtags.append(hashtag_list)
-      if len(mentions_list) == 0:
-        mentions.append(None)
-      else:
-        mentions.append(mentions_list)
-    df['hashtags'] = hashtags
-    df['mentions'] = mentions
-
-
-
-
-
-
-
-
-
-    def get_url(self, df, col):
-      urls = []
-      posts = [re.split(' |\n', t) for t in df[col]]
-      for post in posts:
-        url = []
-        for token in post:
-          # lowercased_token = token.lower()
-          if token.startswith("http") or token.startswith("www"):
-            url.append(token)
-          else:
-            pass
-        if len(url) != 0:
-          urls.append(url)
+  def get_url(self, df, col):
+    urls = []
+    posts = [re.split(' |\n', t) for t in df[col]]
+    for post in posts:
+      url = []
+      for token in post:
+        # lowercased_token = token.lower()
+        if token.startswith("http") or token.startswith("www"):
+          url.append(token)
         else:
-          urls.append(None)
-      return urls
+          pass
+      if len(url) != 0:
+        urls.append(url)
+      else:
+        urls.append(None)
+    return urls
 
 
 
-if '__name__'=='__main__':
-  process = Processing()
+if __name__ == '__main__':
+  process = Processing(merged_data_path='/Users/jie/BRISM_project/BRISM_project/Twitter/data/all_tweets_users.zip')
+  twitter = process.assign_tweet_type(process.data)
+  twitter = process.add_mentions(twitter,'text', puncs,'#', 'hashtags')
+  twitter = process.add_mentions(twitter, 'text', puncs, '@', 'mentions')
+  twitter['text_urls'] = process.get_url(twitter, 'text')
+
+
 
 
 
