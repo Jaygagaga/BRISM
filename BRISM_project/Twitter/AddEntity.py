@@ -136,6 +136,7 @@ class AddEntity(object):
             print("Saved json file! to {}".format(dict_path))
     @staticmethod
     def _tagger(i):
+        """Adapted from https://github.com/edmangog/The-BRI-on-Twitter/blob/master/3.NLP/5.Nanmed%20Entities%20Recognition.py"""
         try:
             result = locationtagger.find_locations(text=i)
             result = result.cities, result.regions, result.countries
@@ -143,6 +144,7 @@ class AddEntity(object):
             result = ''
         return result
     def useLocationTagger(self, df,col,batch_size,file_path):
+        """See if it can capture additional locations beyond our look-up table."""
         for batch_idx in range(math.ceil(len(df) / batch_size)):
             data_batch = df[['id',col]].iloc[batch_size * batch_idx:batch_size * (batch_idx + 1)]
             data_batch['locationTagger'] = data_batch[col].map(lambda x: self._tagger(x)).map(lambda x: self._tagger(x))
