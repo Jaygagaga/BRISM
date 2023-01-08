@@ -27,7 +27,7 @@ import spacy
 # nltk.download('wordnet')
 from nltk.stem import WordNetLemmatizer
 lemmatizer = WordNetLemmatizer()
-merged_data_path = './data/all_tweets_users.zip'
+merged_data_path = './data/normalized_bri.zip'
 sea_en = ['Thailand', 'SEA','Singapore', 'Malaysia', 'Philippines','Vietnam', 'Myanmar',
           'Brunei','Indonesia','Laos','ASEAN', 'Cambodia']
 entity_path = '../helper_data/entity_lookup.csv'
@@ -39,10 +39,12 @@ china_province = ['Heilongjiang', 'Hainan', 'Fujian', 'Henan', 'Shanghai', 'Jian
                   'Macao', 'China']
 # dict_path = 'BRISM_project/helper_data/..json'
 class AddEntity(object):
-    def __init__(self, merged_data_path,entity_path,sea_en=None, china_province=None, fortest=True):
+    def __init__(self, merged_data_path,entity_path,sea_en=None, china_province=None, fortest=False):
         self.data = pd.read_csv(merged_data_path,compression='zip',lineterminator='\n')
         if fortest:
             self.data = self.data.iloc[:20000]
+        else:
+            self.data = self.data.iloc[20000:]
         self.entity = pd.read_csv(entity_path)
         print('Dataframe columns: ',self.data.columns)
         self.sea_en = sea_en
@@ -95,17 +97,29 @@ class AddEntity(object):
                 self.save_dict(entity_dict, dict_path)
             return entity_dict
 
-    def add_country(self,df,col,colname, china_dict=None,sea_dict=None,
+    def add_country(self,df,col,colname, china_dict_path=None,sea_dict_path=None,
                     world_dict=None, batch_size= 1000,file_path=None):  # col = sentences
         # create country column denoting identified places from texts
         #Only allow two cases: 1) identify China & SEA 2) identify worldwide locations except for China & SEA
         # if batch_size != None and file_path != None:
+        if os.path.isfile(china_dict_path) and os.path.isfile(sea_dict_path):
+            with open(china_dict_path) as json_file1:
+                china_dict = json.load(json_file1)
+            with open(sea_dict_path) as json_file2:
+                sea_dict = json.load(json_file2)
+        else:
+            print('Run creat_entity_dict first')
         for batch_idx in range(math.ceil(len(df) / batch_size)):
             data_batch = df[['id',col]].iloc[batch_size * batch_idx:batch_size * (batch_idx + 1)]
             if china_dict and sea_dict:
                 # Extract China and SEA locations and entities at the same time and save them to Country column
                 data_batch[colname] = ''  #ChinaSEA
-                country_dict = china_dict.update(sea_dict)
+                country_dict = {}
+                for k, v in china_dict.items():
+                    country_dict[k] = v
+                for k, v in sea_dict.items():
+                    country_dict[k] = v
+
             if world_dict:
                 data_batch[colname] = '' #Worldwide
                 country_dict = world_dict
@@ -115,8 +129,9 @@ class AddEntity(object):
             data_batch[colname] = data_batch[colname].map(
                 lambda x: list(set(x.split(',')[1:])) if len(list(set(x.split(',')[1:]))) != 0 else None)
             data_batch = data_batch[['id',colname]]
-            self.save_batch(data_batch,file_path)
-            print('Extracted entities for data batch No.{} and saved batch'.format(batch_idx))
+            if file_path:
+                self.save_batch(data_batch,file_path)
+                print('Extracted entities for data batch No.{} and saved batch!'.format(batch_idx))
             time.sleep(10)
 
 
@@ -130,10 +145,11 @@ class AddEntity(object):
                     existing['id'].tolist():
                 data_batch.to_csv(file_path, mode='a', header=False)
 
-    def save_dict(self,dic, dict_path):
+    @staticmethod
+    def save_dict(dic, dict_path):
         with open(dict_path, "w") as fp:
             json.dump(dic, fp)
-            print("Saved json file! to {}".format(dict_path))
+            # print("Saved json file! to {}".format(dict_path))
     @staticmethod
     def _tagger(i):
         """Adapted from https://github.com/edmangog/The-BRI-on-Twitter/blob/master/3.NLP/5.Nanmed%20Entities%20Recognition.py"""
@@ -143,13 +159,31 @@ class AddEntity(object):
         except:
             result = ''
         return result
-    def useLocationTagger(self, df,col,batch_size,file_path):
+    def useLocationTagger(self, df,col,batch_size=1000,file_path=None):
         """See if it can capture additional locations beyond our look-up table."""
         for batch_idx in range(math.ceil(len(df) / batch_size)):
             data_batch = df[['id',col]].iloc[batch_size * batch_idx:batch_size * (batch_idx + 1)]
             data_batch['locationTagger'] = data_batch[col].map(lambda x: self._tagger(x)).map(lambda x: self._tagger(x))
             data_batch = data_batch[['id','locationTagger']]
-            self.save_batch(self, data_batch, file_path)
+            if file_path:
+                self.save_batch(data_batch, file_path)
+                print('Extracted entities for data batch No.{} and saved batch!'.format(batch_idx))
+            time.sleep(10)
+    def subset(self, df,col,subsetRule_path = '', filename=None): # col = labelled attribute/column in subsetRule_path
+        subsetAttribute = pd.read_csv(subsetRule_path) #[id, locationTaggedProperty]
+        subsetAttribute = subsetAttribute.where(pd.notnull(subsetAttribute), None)
+        merged_df = df.merge(subsetAttribute, how = 'left', on = 'id')
+        merged_df = merged_df[merged_df[col].isnull()==False]
+        if filename:
+            self.save_zip(merged_df,filename)
+            print('Saved dataset with labelled attribute!')
+    @staticmethod
+    def save_zip(df,filename):
+        compression_options = dict(method='zip', archive_name=f'{filename}.csv')
+        df.to_csv(f'{filename}.zip', compression=compression_options)
+
+
+
 
 
 
@@ -160,14 +194,20 @@ class AddEntity(object):
 
 
 if __name__ == '__main__':
-    add_entity = AddEntity(merged_data_path,entity_path,sea_en=sea_en, china_province=china_province)
-    china_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='China',identify_province=True,  save_dict = True,
-                                              dict_path ='../helper_data/china_dict.json')
-    sea_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='SEA',identify_province=False,  save_dict = True,
-                                              dict_path ='../helper_data/sea_dict.json')
-    world_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='World', identify_province=False, save_dict=True,
-                                            dict_path='../helper_data/world_dict.json')
-    # CnSEAsubset = add_entity.add_country(add_entity.data,col='text',colname='China_SEA', china_dict=china_dict,sea_dict=sea_dict,world_dict=None)
+    add_entity = AddEntity(merged_data_path,entity_path,sea_en=sea_en, china_province=china_province,fortest=False)
+
+    # china_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='China',identify_province=True,  save_dict = True,dict_path ='../helper_data/china_dict.json')
+    # sea_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='SEA',identify_province=False,  save_dict = True, dict_path ='../helper_data/sea_dict.json')
+    # world_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='World', identify_province=False, save_dict=True,
+    #                                         dict_path='../helper_data/world_dict.json')
+    # print('Tagging China and SEA locations....')
+    CnSEAsubset = add_entity.add_country(add_entity.data,col='lowered_norm_text',colname='China_SEA',
+                                         china_dict_path='../helper_data/china_dict.json',sea_dict_path='../helper_data/sea_dict.json',world_dict=None,
+                                         batch_size= 1000,file_path='./data/China_SEA_tagged.csv')
+    add_entity.subset(add_entity.data, 'China_SEA', subsetRule_path='./data/China_SEA_tagged.csv', filename='bri_sea_cn')
+    # print('Tagging locations using locationtagger....')
+    # LocTaggerSubset = add_entity.useLocationTagger(add_entity.data,col = 'lowered_norm_text',
+    #                                                batch_size=1000,file_path='./data/LocTagged.csv')
 
 
 
