@@ -14,7 +14,7 @@ print('Current root directory: ',os.getcwd())
 sea_bri_path = '/BRISM_project/Twitter/data/China_SEA_tagged.csv.zip'
 
 class IndOrgIdentifier(object):
-    def __init__(self, sea_bri_path,text_data_path):
+    def __init__(self, sea_bri_path):
         self.data = pd.read_csv(sea_bri_path,compression='zip',lineterminator='\n')
 
     def get_tweet_id_for_scrapy_user(self,df,status,existing_scraped_path=None):
@@ -56,7 +56,7 @@ class IndOrgIdentifier(object):
         pass
 
 if __name__ == '__main__':
-  indorg = IndOrgIdentifier(user_path,tweet_path)
+  indorg = IndOrgIdentifier(sea_bri_path)
   tweets_users = indorg.subset(tweets_users,'author_id')
   tweets_users_ = indorg.assign_tweet_type(tweets_users)
   """Getting tweet ids of retweeted and replied_to tweets and save txt file for searching for their authors"""

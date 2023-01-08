@@ -39,12 +39,25 @@ china_province = ['Heilongjiang', 'Hainan', 'Fujian', 'Henan', 'Shanghai', 'Jian
                   'Macao', 'China']
 # dict_path = 'BRISM_project/helper_data/..json'
 class AddEntity(object):
-    def __init__(self, merged_data_path,entity_path,sea_en=None, china_province=None, fortest=False):
+    def __init__(self, merged_data_path,entity_path,sea_en=None, china_province=None, fortest=False,index= 1051000):
+        """
+
+        :param merged_data_path: path to the data with tweets and author infos
+        :param entity_path: entity look-up table
+        :param sea_en: list
+        :param china_province: list
+        :param fortest: selecting a small number of dataset for test
+        :param index: continuing running the script from defined index to the dataset
+        
+        return:
+              A dataframe with columns 1) tweet_id 2) extracted location entities from look-up table
+        """
         self.data = pd.read_csv(merged_data_path,compression='zip',lineterminator='\n')
+        self.index = index
         if fortest:
             self.data = self.data.iloc[:20000]
         else:
-            self.data = self.data.iloc[20000:]
+            self.data = self.data.iloc[self.index:]
         self.entity = pd.read_csv(entity_path)
         print('Dataframe columns: ',self.data.columns)
         self.sea_en = sea_en
@@ -97,8 +110,8 @@ class AddEntity(object):
                 self.save_dict(entity_dict, dict_path)
             return entity_dict
 
-    def add_country(self,df,col,colname, china_dict_path=None,sea_dict_path=None,
-                    world_dict=None, batch_size= 1000,file_path=None):  # col = sentences
+    def add_country(self, df, col, colname, china_dict_path=None, sea_dict_path=None,
+                    world_dict=None, batch_size= 1000, file_path=None, zip_path=None):  # col = sentences
         # create country column denoting identified places from texts
         #Only allow two cases: 1) identify China & SEA 2) identify worldwide locations except for China & SEA
         # if batch_size != None and file_path != None:
@@ -130,20 +143,30 @@ class AddEntity(object):
                 lambda x: list(set(x.split(',')[1:])) if len(list(set(x.split(',')[1:]))) != 0 else None)
             data_batch = data_batch[['id',colname]]
             if file_path:
-                self.save_batch(data_batch,file_path)
-                print('Extracted entities for data batch No.{} and saved batch!'.format(batch_idx))
+                self.save_batch(data_batch,file_path,zip_path)
+                print('Extracted entities for data batch No.{} and saved batch!'.format((self.index / batch_size) + batch_idx))
             time.sleep(10)
 
 
         # return df[['id',colname]]
-    def save_batch(self,data_batch,file_path):
-        if os.path.isfile(file_path) == False:
-            data_batch.to_csv(file_path)
-        else:
-            existing = pd.read_csv(file_path, dtype=str, lineterminator='\n')
+    def save_batch(self,data_batch,file_path, zip_path=None):
+        if zip_path:
+            print('Reading saved zip file and saving to zip file...')
+            existing = pd.read_csv('{}.csv'.format(zip_path), compression='gzip')
             if data_batch['id'].tolist()[0] not in existing['id'].tolist() and data_batch['id'].tolist()[-1] not in \
                     existing['id'].tolist():
-                data_batch.to_csv(file_path, mode='a', header=False)
+                self.append_zip(data_batch,zip_path)
+
+        else:
+            print('Reading saved csv file if existed and saving to csv file...')
+            if os.path.isfile(file_path) == False:
+                data_batch.to_csv(file_path)
+            else:
+                existing = pd.read_csv(file_path, dtype=str, lineterminator='\n')
+                if data_batch['id'].tolist()[0] not in existing['id'].tolist() and data_batch['id'].tolist()[-1] not in \
+                        existing['id'].tolist():
+                    data_batch.to_csv(file_path, mode='a', header=False)
+
 
     @staticmethod
     def save_dict(dic, dict_path):
@@ -181,6 +204,11 @@ class AddEntity(object):
     def save_zip(df,filename):
         compression_options = dict(method='zip', archive_name=f'{filename}.csv')
         df.to_csv(f'{filename}.zip', compression=compression_options)
+    @staticmethod
+    def append_zip(df, filename):
+        df.to_csv('{}.csv'.format(filename), mode='a', compression='gzip')
+
+        # new_df = pd.read_csv('test.csv', compression='gzip')
 
 
 
@@ -194,7 +222,7 @@ class AddEntity(object):
 
 
 if __name__ == '__main__':
-    add_entity = AddEntity(merged_data_path,entity_path,sea_en=sea_en, china_province=china_province,fortest=False)
+    add_entity = AddEntity(merged_data_path,entity_path,sea_en=sea_en, china_province=china_province,fortest=False,index= 1051000)
 
     # china_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='China',identify_province=True,  save_dict = True,dict_path ='../helper_data/china_dict.json')
     # sea_dict = add_entity.creat_entity_dict('entity_en', ChinaSEA='SEA',identify_province=False,  save_dict = True, dict_path ='../helper_data/sea_dict.json')
@@ -203,7 +231,7 @@ if __name__ == '__main__':
     # print('Tagging China and SEA locations....')
     CnSEAsubset = add_entity.add_country(add_entity.data,col='lowered_norm_text',colname='China_SEA',
                                          china_dict_path='../helper_data/china_dict.json',sea_dict_path='../helper_data/sea_dict.json',world_dict=None,
-                                         batch_size= 1000,file_path='./data/China_SEA_tagged.csv')
+                                         batch_size= 1000,file_path='./data/China_SEA_tagged.csv',zip_path=None)
     add_entity.subset(add_entity.data, 'China_SEA', subsetRule_path='./data/China_SEA_tagged.csv', filename='bri_sea_cn')
     # print('Tagging locations using locationtagger....')
     # LocTaggerSubset = add_entity.useLocationTagger(add_entity.data,col = 'lowered_norm_text',
