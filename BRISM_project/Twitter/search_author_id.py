@@ -32,8 +32,8 @@ import time
 # output_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/liking_user_bri_new.csv'
 # file_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/retweeter/retweeter_user_bri.csv'
 # output_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/retweeter_user_info.csv'
-output_path = '/Users/jie/phd_project/BRISM_project/Twitter/data/associated_authors.csv'
-txt_path = '/Users/jie/phd_project/BRISM_project/Twitter/data/retweeted_tweets.txt'
+output_path = './data/authors.csv'
+txt_path = './data/search_author_id.txt'
 # json_path = '/Users/jie/phd_project/brism/TwitterNetwork/data/user_info.json'
 
 class SearchAuthorInfo(object):
@@ -252,7 +252,7 @@ if __name__ == '__main__':
     # last_tweet = author_profile.tweet_id.unique()[-1][1:-1]
     with open(txt_path) as f:
         needed = f.readlines()
-    needed = [s.replace('\n', '') for s in needed]
+    needed = [s.replace('\n', '') for s in needed][500:]
     # if run before,
     # needed = [i for i in needed if i not in author_profile.tweet_id.map(lambda x: x[1:-1]).to_list()]
     # index =needed.index(last_tweet)

@@ -4,7 +4,7 @@ import time
 import pandas as pd
 import os
 from openpyxl import load_workbook
-from TwitterData.twitter_authentication import bearer_token
+from Twitter.twitter_authentication import bearer_token
 # from twitter_authentication import bearer_token
 client = tweepy.Client(bearer_token, wait_on_rate_limit=True)
 user_dict = {}
@@ -210,7 +210,7 @@ def scrapy(keyword1, keyword2=None,and_query =False, until_id = None,save_type =
         i +=1
     # return belt_and_road,author_profile
 def main():
-    scrapy(keyword1 = 'maritime silk road',keyword2 = None,and_query =False, until_id = '1096251958938091522', save_type = 'csv',
+    scrapy(keyword1 = '一带一路',keyword2 = None,and_query =False, until_id = '1394062059701252097', save_type = 'csv',
            start = '2018-01-01',end='2021-12-31',file_path = '/Users/jie/phd_project/TwitterData/brism',
            user_filename = 'brism_users', tweet_filename = 'brism_tweets')
 #keyword1 = 'maritime silk road”, and “silk road economic belt

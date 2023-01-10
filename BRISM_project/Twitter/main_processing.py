@@ -13,7 +13,6 @@ except AttributeError:
     pass
 else:
     ssl._create_default_https_context = _create_unverified_https_context
-nltk.download()
 tokenizer = nltk.RegexpTokenizer(r"\w+")
 nltk.download('averaged_perceptron_tagger')
 import spacy
@@ -25,7 +24,7 @@ puncs = "!$%&'()*+, -./:;<=>?@[\]^_`{|}~"
 class Processing(object):
   def __init__(self, merged_data_path= None, tweets_path = None, user_path = None,puncs = None):
     if merged_data_path:
-      self.data = pd.read_csv(merged_data_path,compression='zip')
+      self.data = pd.read_csv(merged_data_path,compression='zip',lineterminator='\n')
     if tweets_path and user_path:
       self.tweets = self.read_zip(tweets_path,'all_tweets.csv','id')
       self.users = self.read_zip(user_path,'all_users.csv', 'author_id')
@@ -85,14 +84,21 @@ class Processing(object):
         urls.append(None)
     return urls
 
+  @staticmethod
+  def save_zip(df, filename):
+    compression_options = dict(method='zip', archive_name=f'{filename}.csv')
+    df.to_csv(f'{filename}.zip', compression=compression_options)
+
+
 
 
 if __name__ == '__main__':
-  process = Processing(merged_data_path='/Users/jie/BRISM_project/BRISM_project/Twitter/data/all_tweets_users.zip')
-  twitter = process.assign_tweet_type(process.data)
-  twitter = process.add_mentions(twitter,'text', puncs,'#', 'hashtags')
+  process = Processing(merged_data_path='./data/all_tweets_users.zip')
+  twitter = process.add_mentions(process.data, 'text', puncs, '#', 'hashtags')
   twitter = process.add_mentions(twitter, 'text', puncs, '@', 'mentions')
+  twitter = process.assign_tweet_type(twitter)
   twitter['text_urls'] = process.get_url(twitter, 'text')
+  process.save_zip(twitter,'all_tweets_users_processed')
 
 
 
