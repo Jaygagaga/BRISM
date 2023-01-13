@@ -252,7 +252,7 @@ if __name__ == '__main__':
     # last_tweet = author_profile.tweet_id.unique()[-1][1:-1]
     with open(txt_path) as f:
         needed = f.readlines()
-    needed = [s.replace('\n', '') for s in needed][500:]
+    needed = [s.replace('\n', '') for s in needed][9200:]
     # if run before,
     # needed = [i for i in needed if i not in author_profile.tweet_id.map(lambda x: x[1:-1]).to_list()]
     # index =needed.index(last_tweet)

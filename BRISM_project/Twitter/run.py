@@ -40,7 +40,7 @@ if __name__ == '__main__':
   theme_df = assign_theme.extraction_coverage(theme_df)
   save_zip(theme_df, 'sea_bri_themes')
   # print('Getting tweet ids which do not have authors information...')
-  # author_tweets = indorg.get_tweet_id_for_scrapy_user(theme_df, 'author_id', './data/authors.csv'
+  # author_tweets = indorg.get_tweet_id_for_scrapy_user(indorg.data, 'author_id', './data/authors.csv'
   #                                                     , author=True)
   # print('Saving tweet ids which do not have authors information...')
   #Then send to search_author_id.py
@@ -59,7 +59,7 @@ if __name__ == '__main__':
   print('Adding identified_indorg attributes to dataframe...')
   tweets_users['identified_indorg'] = identified_indorg
   print('Getting capitalized entities including university names from texts...')
-  uni_names, captialized_entity = add_entity.get_uni_names(tweets_users, col='lowered_norm_text',file_path=None)
+  uni_names, captialized_entity = add_entity.get_uni_names(tweets_users, col='origin_text',file_path=None)
   # print('Adding capitalized entities to dataframe...')
   # if 'uni_entities_x' in tweets_users.columns:
   #     tweets_users = tweets_users.drop(['uni_entities_x',
@@ -81,7 +81,7 @@ if __name__ == '__main__':
   print('Theme extraction coverage:', new_df[new_df['extraction_coverage']=='Y'].count()[0]/len(new_df))
   print('Coverage of identified roles: ',len(new_df[new_df['identified_roles'].isnull() == False])/len(new_df))
   print('Coverage of confirmed roles: ', len(new_df[new_df['confirmed_roles']=='confirmed'])/len(new_df))
-  # new_df['identified_roles'] = new_df['identified_roles'].fillna(new_df['ind_org'])
+  new_df['identified_roles'] = new_df['identified_roles'].fillna(new_df['ind_org'])
   print('Coverage of identified roles after replacing null values with ind_org values: ', len(new_df[new_df['identified_roles'].isnull() == False])/len(new_df))
   save_zip(new_df, 'sea_theme_roles')
 

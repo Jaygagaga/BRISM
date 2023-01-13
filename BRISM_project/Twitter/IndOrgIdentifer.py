@@ -9,10 +9,13 @@ import io
 import ast
 from demographer.indorg_neural import NeuralOrganizationDemographer
 from demographer.indorg import IndividualOrgDemographer
-from AddEntity import save_zip, AddEntity, merged_data_path,entity_path,intersection
-from AssignTheme import AssignThemes,theme_path
+from AddEntity import intersection,save_zip
+# from AddEntity import save_zip, AddEntity, merged_data_path,entity_path,intersection
+# from AssignTheme import AssignThemes,theme_path
 import json
 from demographer import process_tweet
+from nltk.stem import WordNetLemmatizer
+lemmatizer = WordNetLemmatizer()
 import re
 import os
 print('Current root directory: ',os.getcwd())
@@ -20,29 +23,24 @@ print('Current root directory: ',os.getcwd())
 # user_path = '/Users/jie/phd_project/BRISM_project/Twitter/data/user_tweet.csv.zip'
 # sea_bri_path = './bri_sea_cn.zip'
 # sea_bri_path = './data/normalized_bri.zip'
-tweets_cols = ['id','text','created_at', 'retweet_count', 'reply_count', 'like_count',
-               'quote_count', 'geo', 'lang', 'conversation_id', 'referenced_tweets',
-               'keyword', 'Status', 'associated_tweets', 'hastags', 'mentions', 'url_text',
-               'normalized_text', 'lowered_norm_text', 'China_SEA']
-users_cols = ['author_id','username', 'description',
-       'verified', 'location', 'profile_image_url', 'name', 'url',
-       'followers_count', 'following_count', 'tweet_count', 'listed_count']
-description_roles = {'Government' :['republic', 'embassy', 'council','parliament',
-                                    'secretary','minister','office','committee'],
-                     'University' : ['university','college','school'],
-                     'Agency':['scholarship','admission','application'],
-                     'Student':['student','undergrad','freshmen','masters','alumnus','graduate','phd candidate','ph.d','trainee'],
-                     'Professor':['professor','prof','educator','dr.','lecturer','scholar','scholiast','researcher','editor','research fellow'],
-                     'Media': ['news','information','press','china daily','writer', 'editor', 'journalist'],
-                     'Business':['company','enterprise','start-up','ceo','founder','entrepreneur'],
-                     'Organization':['organization','association','ngo'],
+
+description_roles = {'Government' :['republic', 'embassy', 'council','parliament','civil servant','ambassador',
+                                    'secretary','minister','office','committee','governor'],
+                     'Education' : ['university','college','school','training','diplomacy','institute'],
+                     'Agency':['scholarship','admission','application','fellowship'],
+                     'Student':['student','undergrad','freshmen','masters','alumnus','graduate','phd candidate','ph.d','trainee','phd'],
+                     'Researcher':['professor','prof','educator','dr.','lecturer','scholar','scholiast','researcher'
+                                  ,'research fellow','expert','analyst','postdoc'],
+                     'Media': ['media','news','information','press','china daily','platform'],
+                     'Business':['company','enterprise','start-up','ceo','founder','entrepreneur','ltd','firm'],
+                     'Organization':['organization','association','ngo','conference','think tank'],
                      }
+description_roles = {key:[lemmatizer.lemmatize(v) for v in values] for key, values in description_roles.items()}
 #'Individual': ['fellow','director','']
-user_path = './data/associated_authors.csv'
-# theme_path = './helper_data/Theme_Keywords_new.xlsx'
+
 class IndOrgIdentifier(object):
-    def __init__(self, sea_bri_path=None,user_path1=None,user_path2=None,
-                 tweets_cols=None,users_cols=None, assign_theme = True, theme_path=theme_path):
+    def __init__(self, df=None,sea_bri_path=None,user_path1=None,user_path2=None,
+                 tweets_cols=None,users_cols=None, assign_theme = True,):
         """
 
         :param tweets_cols: columns in tweet dataset (make up for missed authors)
@@ -66,8 +64,8 @@ class IndOrgIdentifier(object):
         print('Number of datapoints: {}'.format(len(self.data)))
         print('Dataframe has columns: {}'.format(self.data.columns))
         if user_path1 and user_path2:
-            user_info1 = pd.read_csv(user_path1)
-            user_info2 = pd.read_csv(user_path2)
+            user_info1 = pd.read_csv(user_path1,lineterminator='\n')
+            user_info2 = pd.read_csv(user_path2,lineterminator='\n')
             user_info = pd.concat([user_info1,user_info2])
             data1 = self.data[self.data.author_id.isnull()==False]
             data2 = self.data[self.data.author_id.isnull()==True]
@@ -85,8 +83,8 @@ class IndOrgIdentifier(object):
             self.df = self.data[(self.data.author_id.isnull()==False) & (self.data.name.isnull()==False)]
             print('Dataframe columns are: ', self.df.columns)
             print('Number of datapoints is: ', len(self.df))
-        if assign_theme:
-            self.themes = AssignThemes(theme_path)
+        # if assign_theme:
+        #     self.themes = AssignThemes(theme_path)
 
 
 
@@ -123,7 +121,7 @@ class IndOrgIdentifier(object):
             with open(existing_scraped_path) as f:
                 existing_scraped = [str(line.rstrip('\n')) for line in f]
         if existing_scraped_path and existing_scraped_path.split('.')[-1]=='csv':
-            existing = pd.read_csv(existing_scraped_path)
+            existing = pd.read_csv(existing_scraped_path,lineterminator='\n')
             existing_scraped = existing['tweet_id'].map(lambda x:x[1:-1]).to_list()
         users_to_scrape = [user for user in users_to_scrape if user not in existing_scraped]
         return users_to_scrape
@@ -256,51 +254,86 @@ class IndOrgIdentifier(object):
         subset =df[['id','identified_indorg']]
         if filename:
             save_zip(subset,filename)
-    def assign_theme(self,df,col): #col='lowered_norm_text'
-        theme_df =self.themes.assign_themes(df,col)
-        return theme_df
+    # def assign_theme(self,df,col): #col='lowered_norm_text'
+    #     theme_df =self.themes.assign_themes(df,col)
+    #     return theme_df
     def roles(self,theme_df,description_roles):
         theme_df['follower_following_ratio'] = theme_df.followers_count/theme_df.following_count
 
         # Round1: identify defined roles from user descriptions and user names
         identified_roles = []
+        theme_df.description = theme_df.description.astype(str)
+        theme_df.name = theme_df.name.astype(str)
         for j,k in zip(theme_df.description.to_list(), theme_df.name.to_list()):
             # print(j,k)
             identified = []
-            text = [j.lower() for j in j.split()] if j else ['']
-            name = [k.lower() for k in k.split()] if k else ['']
+            text = [lemmatizer.lemmatize(j.lower()) for j in j.split()] if j else ['']
+            name = [lemmatizer.lemmatize(k.lower()) for k in k.split()] if k else ['']
             for key, value in description_roles.items():
-                if len(intersection(value, text)) > 0 and any(ext in text for ext in value):
+                if 'professor' in text:
+                    print(text)
+                if len(intersection(value, text)) > 0 and any(ext in ' '.join(text) for ext in value):
+                    # print('True')
                     identified.append(key)
-                if len(intersection(value, name)) > 0 and any(ext in name for ext in value):
+                if len(intersection(value, name)) > 0 and any(ext in ' '.join(name) for ext in value):
                     identified.append(key)
             if len(identified) != 0:
                 identified_roles.append(list(set(identified)))
             else:
                 identified_roles.append(None)
         theme_df['identified_roles'] = identified_roles
+
         #Round 2: determine individual VS. organization based on identified_indorg scores
         ind_org = []
         assert 'identified_indorg' in theme_df.columns, "identified_indorg attributes do not exist!"
+        ind_list = ['director','manager','photographer','writer','editor', 'journalist', 'consultant',
+              'content creator']
         for i in range(len(theme_df)):
             print(theme_df.identified_indorg.iloc[i][0],theme_df['follower_following_ratio'].iloc[i],theme_df.description.iloc[i])
             if theme_df.identified_indorg.iloc[i][0] == 'org' and  theme_df.identified_indorg.iloc[i][1] <= 1.5 and theme_df['follower_following_ratio'].iloc[i]<1:
-                ind_org.append('ind')
+                ind_org.append('Individual')
             elif theme_df.identified_indorg.iloc[i][0] == 'org' and  theme_df.identified_indorg.iloc[i][1] >=2:
-                ind_org.append('org')
-            elif theme_df.identified_indorg.iloc[i][0] == 'ind' and theme_df['follower_following_ratio'].iloc[i]<1:
-                ind_org.append('ind')
-            elif theme_df.description.iloc[i] and 'official' in theme_df.description.iloc[i]:
-                ind_org.append('org')
+                ind_org.append('Organization')
+            elif theme_df.identified_indorg.iloc[i][0] == 'org' and  theme_df.identified_indorg.iloc[i][1] >=2:
+                ind_org.append('Organization')
+            elif theme_df.identified_indorg.iloc[i][0] == 'org' and 'found' in theme_df.description.iloc[i].lower():
+                ind_org.append('Organization')
+            elif theme_df.description.iloc[i] and 'official' in theme_df.description.iloc[i].lower():
+                ind_org.append('Organization')
+            elif theme_df.description.iloc[i] and 'head of' in theme_df.description.iloc[i].lower():
+                ind_org.append('Individual')
+            elif theme_df.identified_indorg.iloc[i][0] == 'ind' or any(en in theme_df.description.iloc[i].lower() for en in ind_list):
+                ind_org.append('Individual')
             else:
                 ind_org.append(None)
         theme_df['ind_org'] = ind_org
+        theme_df = theme_df.where(pd.notnull(theme_df), None)
+
         #Round 3: Comfirm roles by matching two attributes from round 1 and 2
-        theme_df.loc[(theme_df.identified_roles.map(lambda x: True if x and len(intersection(x,['Student','Professor']))>0 else False)) &
-                     (theme_df.ind_org=='ind'),'comfirmed_roles']='confirmed'
-        theme_df.loc[(theme_df.identified_roles.map(lambda x: True if x and len(intersection(x,['University','Government','Agency','Media','Organization','Business'])) > 0 else False)) &
-                     (theme_df.ind_org=='org'), 'comfirmed_roles'] = 'confirmed'
+        theme_df.loc[(theme_df.identified_roles.map(lambda x: x != None and len(intersection(x,['Student','Professor']))>0)) &
+                     (theme_df.ind_org=='Individual'),'confirmed_roles']='confirmed'
+        theme_df.loc[(theme_df.identified_roles.map(lambda x: x != None and len(intersection(x,['University','Government','Agency','Media','Organization','Business'])) > 0 )) &
+                     (theme_df.ind_org=='Organization'), 'confirmed_roles'] = 'confirmed'
+        #Round 4: make up
+        theme_df.loc[(theme_df.description.str.contains('students|resource|job|opportunit') == True) &
+                     (theme_df.description.str.contains(
+                         'offer|help|provide|network|update') == True), 'identified_roles'] = 'Agency'
+        # theme_df.loc[(theme_df.description.str.contains('researcher|Researcher') == True) & (theme_df.identified_roles.isnull()==True),
+        #              'identified_roles'] = 'Researcher'
+        # theme_df.loc[(theme_df.description.str.contains('Professor') == True) & (
+        #         theme_df.identified_roles.isnull() == True),
+        #            'identified_roles'] = 'Researcher'
+        theme_df.loc[(theme_df.description.str.contains('Institute') == True) & (
+                    theme_df.identified_roles.isnull() == True),
+                     'identified_roles'] = 'Organization'
         return theme_df
+    def additionally_associated(self, df,origin_data_path=None):
+        origin_data = pd.read_csv(origin_data_path,compression='zip',lineterminator='\n')
+        associated_tweets = df[
+            (df.extraction_coverage == 'Y') & (df.associated_tweets.isnull() == False)].associated_tweets.unique()
+        associated_tweets = [a for a in associated_tweets if a not in df['id'].to_list()]
+        addition_data = origin_data[origin_data['id'].isin(associated_tweets)]
+        return addition_data
 
 
 
@@ -314,65 +347,10 @@ class IndOrgIdentifier(object):
 
 
 
-if __name__ == '__main__':
-  """Getting subet of data, this step can be done in AddEntity.py"""
-  merged_data_path= './sea_theme_roles.zip'
-  print('merged_data_path: ',merged_data_path)
-  add_entity = AddEntity(merged_data_path,entity_path)
-  # add_entity.subset(add_entity.data, 'China_SEA', subsetRule_path='./data/China_SEA_tagged.csv',filename='bri_sea_cn')
-  # sea_bri_path = './bri_sea_cn.zip'
-  # indorg = IndOrgIdentifier(sea_bri_path=sea_bri_path, user_path1='./data/authors.csv',
-  #                           user_path2='./data/associated_authors.csv',
-  #                           tweets_cols=tweets_cols,
-  #                           users_cols=users_cols,
-  #                           theme_path=theme_path)
-  """Getting tweet ids of retweeted and replied_to tweets and save txt file for searching for their authors"""
-  # replied_to_tweets = indorg.get_tweet_id_for_scrapy_user(indorg.data, 'replied_to', './data/replied_to_tweets.txt')
-  # retweeted_tweets = indorg.get_tweet_id_for_scrapy_user(indorg.data, 'retweeted','./data/retweeted_tweets.txt')
 
-  # # indorg.save_txt(replied_to_tweets,'./data/replied_to_tweets1.txt')
-  # # indorg.save_txt(retweeted_tweets, './data/retweeted_tweets1.txt')
 
-  # print('Assigning themes based on texts...')
-  # theme_df = indorg.assign_theme(indorg.df, 'lowered_norm_text')
-  # theme_df = indorg.themes.extraction_coverage(theme_df)
-  # save_zip(theme_df, 'sea_bri_themes')
-  # print('Getting tweet ids which do not have authors information...')
-  # author_tweets = indorg.get_tweet_id_for_scrapy_user(theme_df, 'author_id', './data/authors.csv'
-  #                                                     , author=True)
-  # print('Saving tweet ids which do not have authors information...')
-  #Then send to search_author_id.py
-  # indorg.save_txt(author_tweets,file_path='./data/search_author_id_theme.txt')
-  # """Construct properties for IndOrg identifier"""
-  # tweets_users = indorg.process(theme_df)
-  # # mention_usernames = indorg.get_mention_username(tweets_users,file_path='./data/mention_usernames.txt')
-  # tweets_users = indorg.construct_data('./data/associated_authors.csv',tweets_users)
-  # tweets_users = tweets_users.where(pd.notnull(tweets_users), None)
-  # print('Columns of new dataframe: ', tweets_users.columns)
-  # print('Number of datapoints in new dataframe: ', len(tweets_users))
-  # tweets_txt = indorg.construct_json(tweets_users)
-  # identified_indorg = indorg.IndOrdScore(tweets_txt)
-  # print('Saving identified_indorg attributes...')
-  # indorg.save_attribute(identified_indorg, indorg.df, filename=None)
-  # print('Adding identified_indorg attributes to dataframe...')
-  # tweets_users['identified_indorg'] = identified_indorg
-  # print('Getting capitalized entities including university names from texts...')
-  # uni_df = add_entity.get_uni_names(tweets_users, 'lowered_norm_text')
-  # print('Adding capitalized entities to dataframe...')
-  # # tweets_users = tweets_users.drop(['uni_entities_x',
-  # #      'captialized_entities_x', 'uni_entities_y', 'captialized_entities_y'], axis=1)
-  # tweets_users = tweets_users.merge(uni_df,how = 'left', on = 'id')
-  # print('Assigning roles based on user descriptions, user names, and IndOrg scores...')
-  # new_df = indorg.roles(tweets_users,description_roles)
-  new_df = add_entity.data
-  sentiments = add_entity.assign_sentiment(new_df)
-  new_df['sentiments_score'] = sentiments
 
-  new_df = new_df.where(pd.notnull(new_df), None)
-  print('Theme extraction coverage:', new_df[new_df['extraction_coverage']=='Y'].count()[0]/len(new_df))
-  print('Coverage of identified roles: ',len(new_df[new_df['identified_roles'].isnull() == False])/len(new_df))
-  print('Coverage of confirmed roles: ', len(new_df[new_df['comfirmed_roles']=='confirmed'])/len(new_df))
-  save_zip(new_df, 'sea_theme_roles')
+
 
 
 

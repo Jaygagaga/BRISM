@@ -50,9 +50,9 @@ def intersection(lst1, lst2):
 def save_zip(df,filename):
     compression_options = dict(method='zip', archive_name=f'{filename}.csv')
     df.to_csv(f'{filename}.zip', compression=compression_options)
-class AddEntity(object):
 
-    def __init__(self, merged_data_path,entity_path,sea_en=None, china_province=None, fortest=False,index= 0):
+class AddEntity(object):
+    def __init__(self, entity_path,df=None,merged_data_path=None,sea_en=None, china_province=None, fortest=False,index= 0):
         """
 
         :param merged_data_path: path to the data with tweets and author infos
@@ -65,7 +65,10 @@ class AddEntity(object):
         return:
               A dataframe with columns 1) tweet_id 2) extracted location entities from look-up table
         """
-        self.data = pd.read_csv(merged_data_path,compression='zip',lineterminator='\n')
+        if merged_data_path:
+            self.data = pd.read_csv(merged_data_path,compression='zip',lineterminator='\n')
+        if df:
+            self.data = df
         self.index = index
         if fortest:
             self.data = self.data.iloc[:20000]
@@ -95,7 +98,7 @@ class AddEntity(object):
             """Only for extracting Chinese and SEA locations and entities"""
             entity_subset = self.entity[(self.entity[col].isnull() == False) & (self.entity[col] != 'Nan')]
             #remove country values with lowecased capital word
-            entity_subset = entity_subset[entity_subset.country.map(lambda x: True if x[0].isupper() else False)]
+            entity_subset = entity_subset[entity_subset.country.map(lambda x: x[0].isupper())]
             #lowercase values in entity_en/entity_cn columns
             entity_subset[col] = [x.lower() for x in entity_subset[col]]
             if ChinaSEA == 'China':
@@ -243,15 +246,17 @@ class AddEntity(object):
     def _extract_org(df,col): #col='origin_text
         # def get_entity(col):
         pattern = re.compile(r'([A-Z][a-z]+(?=\s[A-Z])(?:\s[A-Z][a-z]+)+)')
-        captialized_entity = [[j for sub in re.findall(pattern, str(i)) for j in sub] for i in df[col]]
-        captialized_entity = [[x.lower() for x in entity] for entity in captialized_entity]
+
+        captialized_entity = [re.findall(pattern, i) for i in df[col]]
+        captialized_entity = [[en for en in entity if not any(e in en for e in ['Silk Road','Road Initiative'])]
+                              for entity in captialized_entity]
         return captialized_entity
 
     def get_uni_names(self,df,col, file_path=None):
         captialized_entity = self._extract_org(df,col)
         assert len(captialized_entity) == len(df), "Lengths are not matched!"
         uni_names = []
-        keywords = ['university', 'school','college','research']
+        keywords = ['University', 'School','College','Research']
         for entity in captialized_entity:
             if any(ele in entity for ele in keywords):
                 uni_names.append(entity)
@@ -260,23 +265,23 @@ class AddEntity(object):
             # scholarship_name = [i for i in entity if 'scholarship' in i]
             # scholarship_names.append(scholarship_name)
         assert len(uni_names) == len(df), "Lengths are not matched!"
-        df['uni_entities'] = uni_names
-        df['captialized_entities'] = captialized_entity
-        subset = df[['id','uni_entities','captialized_entities']]
+
         if file_path:
+            df['uni_entities'] = uni_names
+            df['captialized_entities'] = captialized_entity
+            subset = df[['id','uni_entities','captialized_entities']]
             subset.to_csv(file_path)
-        return subset
-    @staticmethod
-    def vader(i):  # adopted from https://github.com/edmangog/The-BRI-on-Twitter/blob/master/3.NLP/3.Sentiment%20Analysis.py
-        analyser = SentimentIntensityAnalyzer()
-        result = analyser.polarity_scores(i).get('compound')
-        return result
-    def assign_sentiment(self,df):
-        pool = mp.Pool()
-        sentiment_list = list(tqdm.tqdm(pool.imap(self.vader, df['origin_text'].fillna('')),
-                                        total=len(df['origin_text'].fillna(''))))
-        # df['sentiment'] = sentiment_list
-        return sentiment_list
+        return uni_names, captialized_entity
+
+    def get_org_name(self,df,col):
+        pattern = re.compile(r'([A-Z]+)\s')
+        df[col] = df[col].astype(str)
+        orgs = [re.findall(pattern,o) for o in df[col]]
+        orgs = [o if len(o) != 0 else None for o in orgs]
+        return orgs
+
+
+
 
 
 

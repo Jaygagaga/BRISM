@@ -13,7 +13,7 @@ class AssignSentiment(object):
         return result
     def assign_sentiment(self,df):
         pool = mp.Pool()
-        sentiment_list = list(tqdm.tqdm(pool.imap(self.vader, df['origin_text'].fillna('')),
-                                        total=len(df['origin_text'].fillna(''))))
+        sentiment_list = list(tqdm.tqdm(pool.imap(self.vader, df['lowered_norm_text'].fillna('')),
+                                        total=len(df['lowered_norm_text'].fillna(''))))
         # df['sentiment'] = sentiment_list
         return sentiment_list

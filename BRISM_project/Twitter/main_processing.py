@@ -93,6 +93,7 @@ class Processing(object):
 
 
 if __name__ == '__main__':
+  
   process = Processing(merged_data_path='./data/all_tweets_users.zip')
   twitter = process.add_mentions(process.data, 'text', puncs, '#', 'hashtags')
   twitter = process.add_mentions(twitter, 'text', puncs, '@', 'mentions')
