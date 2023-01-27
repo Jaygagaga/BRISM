@@ -13,7 +13,7 @@ import time
                         author_id', 'name', 'url', 'protected', 'followers_count', 'following_count',
                         'tweet_count', 'listed_count'
 """
-# author_profile_path = '/Users/jie/phd_project/BRISM_project/Twitter/data/needed1.csv'
+author_profile_path = '/Users/jie/BRISM_project/BRISM_project/Twitter/data/authors.csv'
 # import argparse
 
 # parser = argparse.ArgumentParser()
@@ -33,7 +33,7 @@ import time
 # file_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/retweeter/retweeter_user_bri.csv'
 # output_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/retweeter_user_info.csv'
 output_path = './data/authors.csv'
-txt_path = './data/search_author_id.txt'
+txt_path = './data/search_author_id_theme.txt'
 # json_path = '/Users/jie/phd_project/brism/TwitterNetwork/data/user_info.json'
 
 class SearchAuthorInfo(object):
@@ -125,7 +125,7 @@ class SearchAuthorInfo(object):
     #           'protected':str,'followers_count':int, 'following_count':int, 'tweet_count':int, 'listed_count':int}
 
     def get_user_info(self,usernames):
-        print('Total liking users:{}'.format(len(usernames)))
+        print('Total users:{}'.format(len(usernames)))
         user_info = pd.DataFrame(columns=['username', 'description', 'verified', 'location', 'profile_image_url',
                                           'author_id', 'name', 'url', 'protected', 'followers_count', 'following_count',
                                           'tweet_count', 'listed_count'
@@ -179,7 +179,6 @@ class SearchAuthorInfo(object):
         return user_info
 
     def search_user(self, author_ids,author_tweet_tuple):
-        usernames_tuple = self.get_user_name(author_ids)
         usernames_tuple = self.get_user_name(author_ids)
         usernames = [i[1] for i in usernames_tuple]
         usernames = list(set(usernames))
@@ -248,13 +247,21 @@ class SearchAuthorInfo(object):
 if __name__ == '__main__':
     search_author = SearchAuthorInfo(file_path=None,output_path=output_path)
     #if run before, load exisiting csv
-    # author_profile = pd.read_csv(author_profile_path,low_memory=False)
+    author_profile = pd.read_csv(author_profile_path, lineterminator='\n')
     # last_tweet = author_profile.tweet_id.unique()[-1][1:-1]
+    author_profile = author_profile.drop_duplicates(['author_id'])
+    if "listed_count\r" in author_profile.columns:
+        author_profile.rename(columns = {"listed_count\r": "listed_count"}, inplace=True)
+    author_profile = author_profile[['tweet_id', 'author_id', 'username',
+       'description', 'verified', 'location', 'profile_image_url', 'name',
+       'url', 'protected', 'followers_count', 'following_count', 'tweet_count','listed_count']]
+    author_profile.to_csv('/Users/jie/BRISM_project/BRISM_project/Twitter/data/authors.csv')
     with open(txt_path) as f:
         needed = f.readlines()
-    needed = [s.replace('\n', '') for s in needed][9200:]
+    needed = [s.replace('\n', '') for s in needed]
     # if run before,
-    # needed = [i for i in needed if i not in author_profile.tweet_id.map(lambda x: x[1:-1]).to_list()]
+    #needed= needed[:1000]
+    needed = [i for i in needed if i not in author_profile.tweet_id.map(lambda x: str(x)[1:-1]).to_list()]
     # index =needed.index(last_tweet)
     # needed = needed[index:]
     print('Need to find author for a total of {} tweets'.format(len(needed)))
