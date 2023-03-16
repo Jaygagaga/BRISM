@@ -1,6 +1,7 @@
 import os
 import math
 print('Current root directory: ',os.getcwd())
+import pyarrow
 import zipfile
 import locationtagger
 import io
@@ -8,6 +9,7 @@ import pandas as pd
 import ast
 import time
 import re
+import polars as pl
 import numpy as np
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import tqdm
@@ -47,9 +49,9 @@ def intersection(lst1, lst2):
     lst3 = [value for value in lst1 if value in lst2]
     return lst3
 
-def save_zip(df,filename):
-    compression_options = dict(method='zip', archive_name=f'{filename}.csv')
-    df.to_csv(f'{filename}.zip', compression=compression_options)
+# def save_zip(df,filename):
+#     compression_options = dict(method='zip', archive_name=f'{filename}.csv')
+#     df.to_csv(f'{filename}.zip', compression=compression_options)
 
 class AddEntity(object):
     def __init__(self, entity_path,df=None,merged_data_path=None,sea_en=None, china_province=None, fortest=False,index= 0):
@@ -67,19 +69,20 @@ class AddEntity(object):
         """
         if merged_data_path:
             self.data = pd.read_csv(merged_data_path,compression='zip',lineterminator='\n')
-        if df:
+        if df is not None:
             self.data = df
-        self.index = index
-        if fortest:
-            self.data = self.data.iloc[:20000]
-        else:
-            self.data = self.data.iloc[self.index:]
+            self.index = index
+            if fortest:
+                self.data = self.data.iloc[:20000]
+            else:
+                self.data = self.data.iloc[self.index:]
+            print('Dataframe columns: ', self.data.columns)
+            if 'lowered_norm_text' in self.data.columns:
+                self.data['lowered_norm_text'] = self.data['lowered_norm_text'].astype('str')
         self.entity = pd.read_csv(entity_path)
-        print('Dataframe columns: ',self.data.columns)
         self.sea_en = sea_en
         self.china_province = china_province
-        if 'lowered_norm_text' in self.data.columns:
-            self.data['lowered_norm_text'] = self.data['lowered_norm_text'].astype('str')
+
 
     def creat_entity_dict(self, col, ChinaSEA='China',identify_province=True,  save_dict = True, dict_path =None):  # entity df col= entity_en/entity_cn
 
@@ -89,10 +92,10 @@ class AddEntity(object):
         if col == 'entity_cn' and identify_province:
             # 对于Country==China的entity_cn 有两种country识别方式，一种仅识别国家中国，一种识别省份
             # head(1): entity_cn = '三明',country = Fujian
-            entity_subset = self.entity.groupby('entity_cn').head(1)
+            entity_subset = entity_subset.groupby('entity_cn').head(1)
         if col == 'entity_cn' and not identify_province:
             # tail(1): entity_cn = '三明',country = China
-            entity_subset = self.entity.groupby('entity_cn').tail(1)
+            entity_subset = entity_subset.groupby('entity_cn').tail(1)
         if col == 'entity_en':
 
             """Only for extracting Chinese and SEA locations and entities"""
@@ -122,44 +125,47 @@ class AddEntity(object):
 
             if ChinaSEA =='World':
                 entity_subset = entity_subset[~entity_subset.country.isin(self.sea_en + ['China'] + self.china_province)]
-            entity_ = entity_subset.groupby('country')[col].agg('|'.join).reset_index()
-            entity_dict = dict(zip(entity_.country, entity_[col]))
-            if save_dict and dict_path:
-                self.save_dict(entity_dict, dict_path)
-            return entity_dict
+        entity_ = entity_subset.groupby('country')[col].agg('|'.join).reset_index()
+        entity_dict = dict(zip(entity_.country, entity_[col]))
+        if save_dict and dict_path:
+            self.save_dict(entity_dict, dict_path)
+        return entity_dict
 
     # @staticmethod
 
 
     def add_country(self, df, col, colname, china_dict_path=None, sea_dict_path=None,
-                    world_dict=None, batch_size= 1000, file_path=None, zip_path=None):  # col = sentences
-        # create country column denoting identified places from texts
+                    world_dict_path=None, batch_size= 1000, file_path=None, zip_path=None):  # col = sentences
+        # create country column denoting ideget_uni_namesntified places from texts
         #Only allow two cases: 1) identify China & SEA 2) identify worldwide locations except for China & SEA
         # if batch_size != None and file_path != None:
-        if os.path.isfile(china_dict_path) and os.path.isfile(sea_dict_path):
+        df[col] = df[col].str.lower()
+        country_dict = {}
+        if china_dict_path and os.path.isfile(china_dict_path):
+            # Extract China and SEA locations and entities at the same time and save them to Country column
             with open(china_dict_path) as json_file1:
                 china_dict = json.load(json_file1)
-            with open(sea_dict_path) as json_file2:
-                sea_dict = json.load(json_file2)
-        else:
-            print('Run creat_entity_dict first')
-        for batch_idx in range(math.ceil(len(df) / batch_size)):
-            data_batch = df[['id',col]].iloc[batch_size * batch_idx:batch_size * (batch_idx + 1)]
-            if china_dict and sea_dict:
-                # Extract China and SEA locations and entities at the same time and save them to Country column
-                data_batch[colname] = ''  #ChinaSEA
-                country_dict = {}
                 for k, v in china_dict.items():
                     country_dict[k] = v
+        if sea_dict_path and os.path.isfile(sea_dict_path):
+            with open(sea_dict_path) as json_file2:
+                sea_dict = json.load(json_file2)
                 for k, v in sea_dict.items():
                     country_dict[k] = v
+        if world_dict_path and os.path.isfile(world_dict_path):
+            with open(world_dict_path) as json_file3:
+                world_dict = json.load(json_file3)
+                for k, v in world_dict.items():
+                    country_dict[k] = v
+        else:
+            print('Run creat_entity_dict first')
 
-            if world_dict:
-                data_batch[colname] = '' #Worldwide
-                country_dict = world_dict
+
+        for batch_idx in range(math.ceil(len(df) / batch_size)):
+            data_batch = df[['id',col]].iloc[batch_size * batch_idx:batch_size * (batch_idx + 1)]
+            data_batch[colname] = ''
             #Assigning locations
             identified_loc = []
-
             for j in data_batch[col]:
                 identified = []
                 for k, v in country_dict.items():
@@ -179,26 +185,28 @@ class AddEntity(object):
             assert len(identified_loc) == len(data_batch), 'Lengths are not matched!'
             data_batch[colname] = identified_loc
             data_batch = data_batch[['id',colname]]
-            if file_path:
-                self.save_batch(data_batch,file_path,zip_path)
-                print('Extracted entities for data batch No.{} and saved batch!'.format((self.index / batch_size) + batch_idx))
+            self.save_batch(data_batch,file_path=file_path,zip_path=zip_path)
+            print('Extracted entities for data batch No.{} and saved batch!'.format(batch_idx))
             time.sleep(10)
 
 
         # return df[['id',colname]]
-    def save_batch(self,data_batch,file_path, zip_path=None):
+    def save_batch(self,data_batch,file_path=None, zip_path=None):
         if zip_path:
-            NotImplementedError
-            # print('Reading saved zip file and saving to zip file...')
-            # try:
-            #     existing = pd.read_csv('{}.csv'.format(zip_path), compression='gzip')
-            #     if data_batch['id'].tolist()[0] not in existing['id'].tolist() and data_batch['id'].tolist()[-1] not in \
-            #             existing['id'].tolist():
-            #         self.append_zip(data_batch,zip_path)
-            # except:
-            #     print('No available zip file')
-            #     pass
+            # NotImplementedError
+            try:
+                existing = pd.read_csv('{}.zip'.format(zip_path),compression='zip',lineterminator='\n')
+                print('Read saved zip file and saving to zip file...')
+                existing = existing[data_batch.columns]
+                if data_batch['id'].tolist()[0] not in existing['id'].tolist() and data_batch['id'].tolist()[-1] not in existing['id'].tolist():
+                    all_df = pd.concat([existing,data_batch])
+                    self.save_zip(all_df, zip_path)
+                    time.sleep(20)
 
+            except:
+                self.save_zip(data_batch, zip_path)
+                print('No available zip file. Saving the first batch file')
+                time.sleep(20)
         else:
 
             if os.path.isfile(file_path) == False:
@@ -285,19 +293,53 @@ class AddEntity(object):
 
 
 
-    def subset(self, df,col,subsetRule_path = '', filename=None): # col = labelled attribute/column in subsetRule_path
-        subsetAttribute = pd.read_csv(subsetRule_path) #[id, locationTaggedProperty]
+    def subset(self, df,col,subsetRule_path = '', zip_path=None, batch_size=1000): # col = labelled attribute/column in subsetRule_path
+        if subsetRule_path.split('.')[-1] =='zip':
+            subsetAttribute = pd.read_csv(subsetRule_path, compression='zip', lineterminator='\n')
+        if subsetRule_path.split('.')[-1] =='csv':
+            subsetAttribute = pd.read_csv(subsetRule_path) #[id, locationTaggedProperty]
         subsetAttribute = subsetAttribute.where(pd.notnull(subsetAttribute), None)
-        merged_df = df.merge(subsetAttribute, how = 'left', on = 'id')
-        merged_df = merged_df[merged_df[col].isnull()==False]
-        if filename:
-            save_zip(merged_df,filename)
-            print('Saved dataset with labelled attribute!')
-        return merged_df
+        # assert len(df) == len(subsetAttribute), "Numbers of data points do not match!"
+        for batch_idx in range(math.ceil(len(subsetAttribute)/batch_size)):
+            attribut_batch = subsetAttribute.iloc[batch_idx*batch_size:batch_size*(batch_idx+1)]
+            df_batch = df.iloc[batch_idx*batch_size:batch_size*(batch_idx+1)]
+            df_batch = df_batch[['sentences', 'doc_id', 'id', 'Unnamed: 0.1', 'file_name', 'date',
+                     'agency', 'publication', 'body', 'geo', 'subject', 'industry', 'content']]
+            merged_df = df_batch.merge(attribut_batch, how='left', on='id')
+            merged_df = merged_df[merged_df[col].isnull() == False]
+            merged_df = merged_df.where(pd.notnull(merged_df), None)
+            # return only sentences assigned with China SEA locations
+            merged_df = merged_df[merged_df.China_SEA.isnull() == False]
+            self.save_batch(merged_df,file_path=None, zip_path=zip_path)
+            time.sleep(20)
+
+        # subsetAttribute = pl.DataFrame(subsetAttribute)
+        # df = df[['sentences', 'doc_id', 'id', 'Unnamed: 0.1', 'file_name', 'date',
+        #          'agency', 'publication', 'body', 'geo', 'subject', 'industry','content']]
+        # df = pl.DataFrame(df)
+        # merged_df = df.join(subsetAttribute, on="id", how="left")
+        # # merged_df = df.merge(subsetAttribute, how = 'left', on = 'id')
+        # merged_df = merged_df.filter([pl.col(col).is_null()==False,
+        #                               pl.col('China_SEA').is_null()==False])
+        # # merged_df = merged_df.filter(pl.col('China_SEA') != None)
+        # # merged_df = merged_df[merged_df[col].isnull()==False]
+        # merged_df = merged_df.select(df.columns.to_list()+['China_SEA'])
+        # merged_df = merged_df.to_pandas()
+        # if zip_path:
+        #     self.save_zip(merged_df,zip_path)
+        #     print('Saved dataset with labelled attribute!')
+        # merged_df = merged_df.where(pd.notnull(merged_df), None)
+        # #return only sentences assigned with China SEA locations
+        # merged_df = merged_df[merged_df.China_SEA.isnull() == False]
+        # return merged_df
 
     @staticmethod
     def append_zip(df, filename):
         df.to_csv('{}.csv'.format(filename), mode='a', compression='gzip')
+    @staticmethod
+    def save_zip(df, zip_path):
+        compression_options = dict(method='zip', archive_name=f'{zip_path}.csv')
+        df.to_csv(f'{zip_path}.zip', compression=compression_options)
 
         # new_df = pd.read_csv('test.csv', compression='gzip')
 
@@ -307,7 +349,9 @@ class AddEntity(object):
 
 
 
-
+def save_zip(df, zip_path):
+    compression_options = dict(method='zip', archive_name=f'{zip_path}.csv')
+    df.to_csv(f'{zip_path}.zip', compression=compression_options)
 
 
 #
