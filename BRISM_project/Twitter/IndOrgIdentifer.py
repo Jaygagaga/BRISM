@@ -16,6 +16,8 @@ import json
 from demographer import process_tweet
 from nltk.stem import WordNetLemmatizer
 lemmatizer = WordNetLemmatizer()
+from nltk.stem.snowball import SnowballStemmer
+snowBallStemmer = SnowballStemmer("english")
 import re
 import os
 print('Current root directory: ',os.getcwd())
@@ -24,18 +26,26 @@ print('Current root directory: ',os.getcwd())
 # sea_bri_path = './bri_sea_cn.zip'
 # sea_bri_path = './data/normalized_bri.zip'
 
-description_roles = {'Government' :['republic', 'embassy', 'council','parliament','civil servant','ambassador',
-                                    'secretary','minister','office','committee','governor'],
-                     'Education' : ['university','college','school','training','diplomacy','institute'],
-                     'Agency':['scholarship','admission','application','fellowship'],
-                     'Student':['student','undergrad','freshmen','masters','alumnus','graduate','phd candidate','ph.d','trainee','phd'],
+description_roles = {'Government' :['republic', 'embassy', 'council','parliament','civil servant','ambassador','national spokesperson',
+                                    'secretary','minister','ministry','office','committee','governor','governer','ministry of foreign affairs'],
+                     'Education' : ['university','college','school','training','diplomacy','institute','programme','degree','education'],
+                     'Agency':['scholarship','admission','application','fellowship', 'study abroad','consultancy','consulting','consultant','coach',
+                               'visa','education adviser','education advisory','education consultancy','service',
+                               'entry requirements','admission requirements','language requirement',
+                               'entrance exam','enrollment','TOEFL','international student enrollment',
+                               'international student admissions','IELTS'],
+                     'Student':['student','undergrad','freshmen','masters','alumnus','graduate','phd candidate',
+                                'ph.d','trainee','phd','doctoral student'],
                      'Researcher':['professor','prof','educator','dr.','lecturer','scholar','scholiast','researcher'
-                                  ,'research fellow','expert','analyst','postdoc'],
-                     'Media': ['media','news','information','press','china daily','platform'],
+                                  ,'research fellow','expert','analyst','postdoc','research interest', 'research','fellowship',
+                                   'research grant'],
+                     'Media': ['media','news','information','press','china daily','platform','newsroom','newspaper'],
                      'Business':['company','enterprise','start-up','ceo','founder','entrepreneur','ltd','firm'],
-                     'Organization':['organization','association','ngo','conference','think tank'],
+                     'Organization':['organization','association','ngo','conference','think tank']
                      }
-description_roles = {key:[lemmatizer.lemmatize(v) for v in values] for key, values in description_roles.items()}
+
+description_roles ={key:[snowBallStemmer.stem(v) if len(v.split()) ==1 else ' '.join([snowBallStemmer.stem(j) for j in v.split()]) for v in values]
+                         for key, values in description_roles.items()}
 #'Individual': ['fellow','director','']
 
 class IndOrgIdentifier(object):
@@ -56,7 +66,7 @@ class IndOrgIdentifier(object):
             print('No column of origin_text exists')
         self.data = self.data.where(pd.notnull(self.data),None)
         self.data['origin_text_low'] = self.data.origin_text.str.lower()
-        self.data = self.data[self.data.origin_text_low.str.contains('belt and road|silk road') == True]
+        self.data = self.data[self.data.origin_text_low.str.contains('belt and road|silk road|one belt one road') == True]
         self.data = self.data.drop_duplicates(subset = ['id'])
 
         self.data = self.data[list(set(tweets_cols+users_cols))] if 'China_SEA' in self.data.columns else self.data[[j for j in list(set(tweets_cols + users_cols)) if j != 'China_SEA']]
@@ -89,11 +99,11 @@ class IndOrgIdentifier(object):
 
 
     def process(self, df):
+        df = df.where(pd.notnull(df), None)
         df['hastags'] = [ast.literal_eval(t) if t else None for t in df.hastags]
         df['mentions'] = [ast.literal_eval(t) if t else None for t in df.mentions]
         df['url_text'] = [ast.literal_eval(t) if t else None for t in df.url_text]
         # df = df.mask(df.applymap(str).eq('[]'))
-        df = df.where(pd.notnull(df), None)
         return df
     @staticmethod
     def get_mention_username(df,file_path=None):
@@ -245,6 +255,7 @@ class IndOrgIdentifier(object):
                 identified_indorg.append(a[0])
             except:
                 print('Unsuccessful identification of individual VS. organization in No.{}.'.format(num))
+                break
                 identified_indorg.append(None)
         return identified_indorg
     def save_attribute(self, identified_indorg,df,filename):
@@ -289,7 +300,7 @@ class IndOrgIdentifier(object):
         ind_list = ['director','manager','photographer','writer','editor', 'journalist', 'consultant',
               'content creator']
         for i in range(len(theme_df)):
-            print(theme_df.identified_indorg.iloc[i][0],theme_df['follower_following_ratio'].iloc[i],theme_df.description.iloc[i])
+            # print(theme_df.identified_indorg.iloc[i][0],theme_df['follower_following_ratio'].iloc[i],theme_df.description.iloc[i])
             if theme_df.identified_indorg.iloc[i][0] == 'org' and  theme_df.identified_indorg.iloc[i][1] <= 1.5 and theme_df['follower_following_ratio'].iloc[i]<1:
                 ind_org.append('Individual')
             elif theme_df.identified_indorg.iloc[i][0] == 'org' and  theme_df.identified_indorg.iloc[i][1] >=2:
@@ -306,6 +317,8 @@ class IndOrgIdentifier(object):
                 ind_org.append('Individual')
             else:
                 ind_org.append(None)
+
+
         theme_df['ind_org'] = ind_org
         theme_df = theme_df.where(pd.notnull(theme_df), None)
 
