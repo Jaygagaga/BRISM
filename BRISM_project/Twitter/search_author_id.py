@@ -33,7 +33,7 @@ author_profile_path = '/Users/jie/BRISM_project/BRISM_project/Twitter/data/autho
 # file_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/retweeter/retweeter_user_bri.csv'
 # output_path = '/Users/jie/Library/Mobile Documents/com~apple~CloudDocs/NUS/BRISM/data/retweeter_user_info.csv'
 output_path = './data/authors.csv'
-txt_path = './data/search_author_id_theme.txt'
+txt_path = './data/search_author_id_theme_.txt'
 # json_path = '/Users/jie/phd_project/brism/TwitterNetwork/data/user_info.json'
 
 class SearchAuthorInfo(object):
@@ -243,13 +243,14 @@ class SearchAuthorInfo(object):
 # user_info = get_user_info(usernames)
 
 
-
+#36169
 if __name__ == '__main__':
     search_author = SearchAuthorInfo(file_path=None,output_path=output_path)
     #if run before, load exisiting csv
     author_profile = pd.read_csv(author_profile_path, lineterminator='\n')
     # last_tweet = author_profile.tweet_id.unique()[-1][1:-1]
-    author_profile = author_profile.drop_duplicates(['author_id'])
+    author_profile = author_profile.drop_duplicates(['tweet_id'])
+    # author_profile = author_profile.drop_duplicates(['username'])
     if "listed_count\r" in author_profile.columns:
         author_profile.rename(columns = {"listed_count\r": "listed_count"}, inplace=True)
     author_profile = author_profile[['tweet_id', 'author_id', 'username',
@@ -260,7 +261,7 @@ if __name__ == '__main__':
         needed = f.readlines()
     needed = [s.replace('\n', '') for s in needed]
     # if run before,
-    #needed= needed[:1000]
+    needed= needed[30000:]
     needed = [i for i in needed if i not in author_profile.tweet_id.map(lambda x: str(x)[1:-1]).to_list()]
     # index =needed.index(last_tweet)
     # needed = needed[index:]
