@@ -83,8 +83,20 @@ if __name__ == '__main__':
     pagination = WebDriverWait(driver, 20).until(
         EC.visibility_of_element_located((By.XPATH, './/nav[@class="pagination "]')))
     pagenum = pagination.text.split('\n')[-1]
+    #Go to the page where scraping stoped last time
+    while pagenum != '1851':
+        pagination = WebDriverWait(driver, 20).until(
+            EC.visibility_of_element_located((By.XPATH, './/nav[@class="pagination "]')))
+        before = pagination.find_element(By.XPATH,'.//ol/li[1]')
+        sleep(5)
+        before.click()
+        sleep(8)
+        pagenum = WebDriverWait(driver, 20).until(
+            EC.visibility_of_element_located((By.XPATH, './/nav[@class="pagination "]/ol/li[@class="current"]'))).text
+
+
     unfound = []
-    for i in range(254,2089):
+    for i in reversed(range(676,1851)):
         if i == 1:
             download(i)
             sleep(30)
